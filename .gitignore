@@ -7,3 +7,7 @@ build/
 # python do console serial
 __pycache__/
 *.pyc
+
+# esphome: credenciais reais e artefatos de compilação
+esphome/secrets.yaml
+esphome/.esphome/

@@ -4,11 +4,26 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-**Papagaio** — Arduino firmware for an ESP32 that records an IR or 433MHz RF
-command and replays it later. Built to clone a fixed-code garage gate remote,
-but the same firmware learns TV/AC infrared codes too. There is no
-application-level build system — this is a single Arduino sketch
-compiled/flashed with `arduino-cli` behind a `Makefile`.
+**Papagaio** — an ESP32 that records an IR or 433MHz RF command and replays it
+later. Built to clone a fixed-code garage gate remote, but it learns TV/AC
+infrared codes too.
+
+**Two deliverables with different jobs**, and confusing them wastes time:
+
+- `firmware/` — the Arduino sketch, compiled/flashed with `arduino-cli` behind
+  the `Makefile`. This is the **bench capture tool**: it learns codes over a
+  serial protocol and prints them. It has no networking and is not what ends up
+  installed. `make build` is the correctness check; there is no lint or test.
+- `esphome/` — the **deployed configuration**, integrating with Home Assistant
+  (running on a Proxmox host on a separate machine). Codes learned with the
+  sketch are transcribed here. Validate with `esphome config esphome/papagaio.yaml`.
+
+The ESPHome path was chosen over adding WiFi/MQTT to the sketch mainly because
+of `climate: platform: midea_ir`, which *synthesizes* Midea frames from state
+instead of replaying one captured button — so the A/C becomes a real climate
+entity (setpoint, mode, fan) that Alexa/Siri/Google understand natively. The
+sketch was kept, not deleted, because capturing codes is a job ESPHome does
+awkwardly and it already does well.
 
 The project began as a fork of BrincandoComIdeias' "Controle IR" (Q0962)
 sketch; the IR record/replay layer is derived from it (MIT, see `LICENSE`).
@@ -27,6 +42,14 @@ merge or rebase against it.
   below), which keeps this file a clean drop-in from upstream IRremote.
 - `tools/serial_console.py` — the serial console behind `make monitor`; exists
   because the usual tools break on this board (see below).
+- `esphome/papagaio.yaml` — the ESPHome config; same pin map as the sketch.
+- `esphome/secrets.yaml` — **gitignored, and must stay that way.** The remote is
+  public. IR codes are not secrets and belong in the YAML, but the gate's RF
+  code is the entire credential — the remote is fixed-code, so that number
+  alone opens the gate, with no counter or challenge behind it. Git history is
+  permanent, so this is a mistake that cannot be walked back. Note the RF
+  `remote_receiver` runs `dump: rc_switch`, which prints received codes to the
+  ESPHome log: never paste those logs publicly.
 
 ## Conventions
 

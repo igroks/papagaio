@@ -18,9 +18,23 @@ um caractere no monitor serial (115200 baud):
 | `r` | ativa o barramento **RF 433MHz** |
 | `#` + `0`–`9` | grava o próximo código recebido no slot indicado |
 | `0`–`9` | reenvia o código guardado naquele slot |
+| `f` | cicla a portadora IR usada no reenvio RAW: 38 → 36 → 40 → 56 kHz |
+| `p` | cicla quantas vezes um código RAW é repetido por envio: 1 → 4 |
+| `t` + `0`–`9` | auto-teste: envia o slot e tenta capturá-lo de volta |
 
 São 10 slots por barramento. Eles vivem só na RAM — **um reset ou queda de
 energia apaga tudo**.
+
+Os comandos `f` e `p` só afetam códigos **RAW**, isto é, aqueles cujo protocolo
+o IRremote não reconheceu. Como o receptor IR entrega o sinal já demodulado,
+não há como medir a portadora original na gravação: 38kHz é o palpite inicial e
+serve para a grande maioria dos aparelhos. O `f` existe para os poucos casos em
+que não serve.
+
+O `t` manda o código e deixa o receptor da própria placa ligado durante o
+envio, imprimindo o que conseguiu capturar. Aponte o LED transmissor para o
+receptor, a uns 5cm. Se o eco sair parecido com a gravação original, a emissão
+está correta e qualquer falha com o aparelho real é de alcance ou de mira.
 
 ## Hardware
 
@@ -76,6 +90,21 @@ portão mais novos com segurança HCS301/KeeLoq trocam o código a cada
 acionamento — nesses, o código gravado não vai abrir nada. Teste apertando o
 mesmo botão do controle algumas vezes com `#0` armado: se o valor mudar a cada
 aperto, é rolante.
+
+## Limitação: alcance do infravermelho
+
+O LED transmissor é acionado direto pelo GPIO, o que limita a corrente a uns
+20mA — o teto de um pino do ESP32. Um controle de fábrica pulsa o LED com
+100–500mA. Na prática o reenvio funciona, mas exige apontar o LED para a
+janelinha do receptor do aparelho, e o alcance é curto.
+
+Se isso incomodar, o conserto é um transistor: base do BC337 (ou 2N2222) no
+GPIO 19 através de 1kΩ, emissor no GND, e o LED IR com ~10Ω entre a
+alimentação e o coletor. O GPIO passa a chavear só a base, e o LED sai do
+orçamento de corrente do pino. Alimentar o LED com 5V em vez de 3.3V dobra o
+ganho de novo — o nível lógico continua seguro, porque a GPIO nunca vê os 5V.
+
+Trocar o módulo por um LED nu **não** resolve: o gargalo é o pino, não o LED.
 
 ## Origem
 

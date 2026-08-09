@@ -94,7 +94,21 @@ both buses:
 | `i` / `r` | switch `currentBus` |
 | `#` + `0-9` | arm recording into slot `index` on the active bus |
 | `0-9` | replay the code stored in slot `index` on the active bus |
+| `f` | cycle the RAW carrier frequency (`FREQUENCIAS[]`: 38/36/40/56 kHz) |
+| `p` | cycle `repeticoesRaw`, how many times a RAW message is sent (1-4) |
+| `t` + `0-9` | IR loopback self-test (`autoTesteIR`) |
 | anything else | stop both receivers (idle) |
+
+`f` and `p` are IR-only and affect **only** the RAW path, i.e. codes stored
+with `protocol == UNKNOWN`. A demodulating IR receiver cannot measure the
+original carrier, so 38kHz is a guess that happens to be right nearly always —
+`f` exists for the exceptions and can only be resolved by trial.
+
+`autoTesteIR` sends a slot while leaving the receiver running, so the board
+captures its own emission and prints it for comparison against the original
+recording. This is only valid on ESP32, where sending uses LEDC and receiving
+uses a separate hardware timer; on platforms where both contend for one timer
+it would not work.
 
 **Two parallel 10-slot storage arrays**, one per bus, populated by
 `storeIRCode`/`storeRFCode` and played back by `sendIRCode`/`sendRFCode`:
@@ -122,6 +136,13 @@ module runs on 3.3V):
 
 - `IR_RECEIVE_PIN` = 22, `IR_SEND_PIN` = 19
 - `RF_RECEIVE_PIN` = 23, `RF_TRANSMIT_PIN` = 21
+
+The IR transmitter LED hangs directly off `IR_SEND_PIN` with no transistor, so
+it is capped by the pin's ~20mA against the 100-500mA a factory remote pulses.
+Replay works but needs the LED aimed at the target's receiver window. **Every
+"the replay doesn't work" symptom in this project so far has been optical
+power, never software** — check aim and distance before touching timing or
+carrier frequency. The `t` self-test exists to settle that question quickly.
 
 When changing pins, avoid: `GPIO0/2/5/12/15` (boot strapping), `GPIO6-11`
 (internal SPI flash on this board's silkscreen: CMD/SD0/SD1/SD2/SD3/CLK —

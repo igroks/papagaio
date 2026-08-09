@@ -32,12 +32,30 @@ ota:
 wifi:
   ssid: !secret wifi_ssid
   password: !secret wifi_password
+
+  # NOTA: `fast_connect: true` foi testado aqui e PIOROU — trocou as falhas de
+  # associação por 'Probe Request Unsuccessful'/'network can not be found'.
+  # Ele pula o scan, o que serve para rede oculta e atrapalha numa mesh com
+  # dois APs no mesmo SSID. Não reintroduzir sem medir.
+
+  # O modo de economia do WiFi (padrão `light` no ESP32) desliga o rádio entre
+  # beacons, e é a causa clássica de a placa sumir da rede depois de um tempo.
+  # Um controle que precisa responder na hora não pode dormir.
+  power_save_mode: none
+
   # Se o WiFi cair, a placa sobe um AP próprio para reconfiguração.
   ap:
     ssid: "Papagaio Fallback"
     password: !secret ap_password
 
 captive_portal:
+
+# TEMPORÁRIO — só para validar o midea_ir contra o ar sem depender do Home
+# Assistant. Sobe uma página no IP da placa com os controles das entidades.
+# Remover depois do teste: é uma superfície a mais, sem autenticação, num
+# aparelho que aciona o portão. Se for mantido, use o bloco `auth:`.
+web_server:
+  port: 80
 
 # --- Transmissores -----------------------------------------------------------
 # Dois barramentos, cada um no seu pino. Diferente do firmware.ino, aqui não
@@ -80,16 +98,28 @@ remote_receiver:
 
 # --- Ar-condicionado ---------------------------------------------------------
 # Entidade de clima de verdade: temperatura, modo e ventilação, e não um
-# botão que repete o estado congelado no dia da gravação. Depende de o
-# aparelho ser mesmo Midea — a captura de 48 bits com pares byte+byte
-# invertido e cabeçalho 4400/4400 indica que sim.
+# botão que repete o estado congelado no dia da gravação.
+#
+# É COOLIX, não midea_ir — apesar de o aparelho ser um Springer Midea. Os dois
+# protocolos compartilham os tempos (TICK 560, cabeçalho 4480/4480, 38kHz), o
+# que torna fácil confundir, mas a estrutura difere:
+#
+#   midea_ir: 6 bytes de dados, e o segundo quadro com todos os bits INVERTIDOS
+#   coolix:   3 bytes, cada um seguido do seu COMPLEMENTO, e o quadro REPETIDO
+#
+# A captura do controle real deu `B2 4D 1F E0 A4 5B` duas vezes, idêntico —
+# ou seja, payload 24 bits `0xB21FA4` com complementos, quadro repetido. É
+# Coolix, e o prefixo 0xB2 é a assinatura da família (veja COOLIX_OFF =
+# 0xB27BE0 em coolix.cpp). O midea_ir emitia `A1 A0 45 FF FF 6B`, que o
+# aparelho ignorava por ser outra variante.
 
 climate:
-  - platform: midea_ir
+  - platform: coolix
+    id: ar_cond
     name: "Ar-condicionado"
     transmitter_id: tx_ir
-    # Springer Midea só refrigera — sem isso o HA exibiria um modo de
-    # aquecimento que o aparelho ignora.
+    # Springer só refrigera — sem isso o HA exibiria um modo de aquecimento
+    # que o aparelho ignora.
     supports_heat: false
 
 # --- Portão ------------------------------------------------------------------

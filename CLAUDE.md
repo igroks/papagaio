@@ -19,11 +19,29 @@ infrared codes too.
   sketch are transcribed here. Validate with `esphome config esphome/papagaio.yaml`.
 
 The ESPHome path was chosen over adding WiFi/MQTT to the sketch mainly because
-of `climate: platform: midea_ir`, which *synthesizes* Midea frames from state
-instead of replaying one captured button — so the A/C becomes a real climate
-entity (setpoint, mode, fan) that Alexa/Siri/Google understand natively. The
-sketch was kept, not deleted, because capturing codes is a job ESPHome does
-awkwardly and it already does well.
+a `climate_ir` component *synthesizes* frames from state instead of replaying
+one captured button — so the A/C becomes a real climate entity (setpoint, mode,
+fan) that Alexa/Siri/Google understand natively. The sketch was kept, not
+deleted, because capturing codes is a job ESPHome does awkwardly and it already
+does well.
+
+**The A/C is COOLIX, not Midea** — despite the unit being a Springer Midea, and
+despite `midea_ir` looking like the obvious choice. This cost real debugging
+time, so: the two protocols share every timing constant (TICK 560, header
+4480/4480, 38kHz carrier), which makes them indistinguishable by timing alone.
+They differ in frame structure:
+
+- `midea_ir` — 6 data bytes, then a second frame with every bit **inverted**
+- `coolix` — 3 data bytes each followed by its **complement**, frame **repeated**
+
+The real remote captures as `B2 4D 1F E0 A4 5B` twice, identically: payload
+`0xB21FA4` with complements, repeated. That is Coolix, and the `0xB2` prefix is
+the family signature (`COOLIX_OFF = 0xB27BE0` in `coolix.cpp`). Under
+`midea_ir` the board emitted `A1 A0 45 FF FF 6B` and the unit ignored it.
+
+The cheap way to tell them apart is the board's own IR receiver: with
+`dump: all` on `remote_receiver`, the ESP32 captures its own emission and the
+log names the protocol it decoded. That loopback is what settled this.
 
 The project began as a fork of BrincandoComIdeias' "Controle IR" (Q0962)
 sketch; the IR record/replay layer is derived from it (MIT, see `LICENSE`).

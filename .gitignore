@@ -1,0 +1,9 @@
+# artefatos de build do arduino-cli (quando gerados dentro do projeto)
+build/
+*.bin
+*.elf
+*.map
+
+# python do console serial
+__pycache__/
+*.pyc

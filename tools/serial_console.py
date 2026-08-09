@@ -19,6 +19,7 @@ Digite os comandos do firmware e tecle Enter (o Enter não é enviado):
 Ctrl-C ou Ctrl-D encerra.
 """
 import argparse
+import errno
 import fcntl
 import os
 import select
@@ -83,6 +84,7 @@ def main():
 
     stdin_fd = sys.stdin.fileno()
     pending = b""          # linha parcial vinda do stdin
+    perdeu_porta = False
     try:
         while True:
             ready, _, _ = select.select([fd, stdin_fd], [], [], 0.1)
@@ -106,9 +108,26 @@ def main():
                         os.write(fd, cmd)
     except KeyboardInterrupt:
         pass
+    except OSError as exc:
+        # EIO/ENODEV aqui não é erro de comando: a porta USB sumiu no meio da
+        # sessão (a placa re-enumerou). Costuma ser queda de tensão no pico de
+        # corrente do LED IR, cabo ruim ou a placa reiniciando sozinha.
+        if exc.errno not in (errno.EIO, errno.ENODEV, errno.ENXIO):
+            raise
+        perdeu_porta = True
     finally:
-        os.close(fd)
-        print("\n[desconectado]")
+        try:
+            os.close(fd)
+        except OSError:
+            pass
+        if perdeu_porta:
+            print(f"\n[a porta {args.port} desapareceu — a placa re-enumerou]")
+            print("[verifique o cabo/alimentacao e rode 'make ports' para reencontrar]")
+        else:
+            print("\n[desconectado]")
+
+    if perdeu_porta:
+        sys.exit(1)
 
 
 if __name__ == "__main__":

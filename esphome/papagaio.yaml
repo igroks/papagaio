@@ -118,4 +118,16 @@ button:
       - remote_transmitter.transmit_rc_switch_raw:
           transmitter_id: tx_rf
           code: !secret portao_code
-          protocol: !secret portao_protocol
+          # Protocolo 6 da rc-switch (HT6P20B), mas com o pulso medido no
+          # controle real em vez do nominal de 450us: o oscilador do HT6P20B é
+          # ajustado por resistor externo, então cada unidade tem o seu valor,
+          # e este controle transmite consistentemente a ~506us. As proporções
+          # e o `inverted` vêm da tabela da rc-switch (RCSwitch.cpp:87).
+          # Se não funcionar, o teste seguinte é trocar tudo isso por
+          # `protocol: 6` e deixar o ESPHome usar o nominal.
+          protocol:
+            pulse_length: 506
+            sync: [23, 1]
+            zero: [1, 2]
+            one: [2, 1]
+            inverted: true

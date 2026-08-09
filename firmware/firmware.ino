@@ -70,11 +70,23 @@ int STATUS_PIN = LED_BUILTIN;
 int DELAY_BETWEEN_REPEAT = 50;
 int DEFAULT_NUMBER_OF_REPEATS_TO_SEND = 1;
 
+// Frequencia da portadora usada no reenvio de codigos RAW (protocolo nao
+// reconhecido). A maioria dos aparelhos usa 38kHz, mas alguns fabricantes
+// usam 36, 40 ou 56 — e como o receptor IR nao consegue medir a portadora,
+// nao da pra descobrir isso na gravacao, so testando. Ciclado pelo comando 'f'.
+const uint8_t FREQUENCIAS[] = {38, 36, 40, 56};
+uint8_t idxFrequencia = 0;
+
+// Quantas vezes a mensagem RAW e repetida a cada envio. Controles de ar
+// costumam mandar a mensagem varias vezes enquanto a tecla esta apertada.
+uint8_t repeticoesRaw = 1;
+
 int estadoAnt = 0; // VARIÁVEL PARA CONTROLAR A TROCA DE MODO DE OPERAÇÃO
 char currentBus = 'i'; // BARRAMENTO ATIVO: 'i' = InfraVermelho, 'r' = RF 433MHz
 
 void storeIRCode(IRData *aIRReceivedData, int index);
 void sendIRCode(storedIRDataStruct *aIRDataToSend);
+void autoTesteIR(int index);
 void storeRFCode(int index);
 void sendRFCode(storedRFDataStruct *aRFDataToSend);
 
@@ -97,6 +109,9 @@ void setup() {
     Serial.println(F("Digite 'r' para usar o barramento RF 433MHz (portão)"));
     Serial.println(F("Para gravar digite '#' seguido da posicao entre 0 e 9"));
     Serial.println(F("Para enviar digite o numero entre 0 e 9 de um codigo ja gravado"));
+    Serial.println(F("Digite 'f' para trocar a frequencia da portadora IR (38/36/40/56 kHz)"));
+    Serial.println(F("Digite 'p' para trocar quantas vezes o codigo RAW e repetido (1..4)"));
+    Serial.println(F("Digite 't' seguido da posicao para o auto-teste (envia e tenta receber de volta)"));
 }
 
 void loop() {
@@ -122,6 +137,26 @@ void loop() {
         Serial.print(F("Aguardando Codigo #"));
         Serial.println(recebido);
         digitalWrite(pinLED, HIGH);
+
+      } else if (recebido == 'f') {
+        // TROCA A FREQUENCIA DA PORTADORA USADA NO ENVIO RAW
+        idxFrequencia = (idxFrequencia + 1) % (sizeof(FREQUENCIAS) / sizeof(FREQUENCIAS[0]));
+        Serial.print(F("Portadora IR (envio RAW): "));
+        Serial.print(FREQUENCIAS[idxFrequencia]);
+        Serial.println(F(" kHz"));
+
+      } else if (recebido == 'p') {
+        // TROCA QUANTAS VEZES A MENSAGEM RAW E REPETIDA
+        repeticoesRaw = (repeticoesRaw % 4) + 1;
+        Serial.print(F("Repeticoes do envio RAW: "));
+        Serial.println(repeticoesRaw);
+
+      } else if (recebido == 't') {
+        // AUTO-TESTE: ENVIA E TENTA CAPTURAR O PROPRIO SINAL
+        delay(50);
+        recebido = Serial.read();
+        estadoAtual = 0;
+        autoTesteIR(atoi(&recebido));
 
       } else if ( recebido >= '0' && recebido <= '9'){
         // MODO ENVIO
@@ -218,12 +253,24 @@ void storeIRCode(IRData *aIRReceivedData, int index) {
 
 void sendIRCode(storedIRDataStruct *aIRDataToSend) {
     if (aIRDataToSend->receivedIRData.protocol == UNKNOWN /* i.e. raw */) {
-        // Assume 38 KHz
-        IrSender.sendRaw(aIRDataToSend->rawCode, aIRDataToSend->rawCodeLength, 38);
+        if (aIRDataToSend->rawCodeLength == 0) {
+            Serial.println(F("Nenhum codigo IR gravado nessa posicao."));
+            return;
+        }
+
+        for (uint8_t i = 0; i < repeticoesRaw; i++) {
+            if (i > 0) {
+                delay(DELAY_BETWEEN_REPEAT);
+            }
+            IrSender.sendRaw(aIRDataToSend->rawCode, aIRDataToSend->rawCodeLength, FREQUENCIAS[idxFrequencia]);
+        }
 
         Serial.print(F("Sent raw "));
         Serial.print(aIRDataToSend->rawCodeLength);
-        Serial.println(F(" marks or spaces"));
+        Serial.print(F(" marks or spaces @ "));
+        Serial.print(FREQUENCIAS[idxFrequencia]);
+        Serial.print(F(" kHz x"));
+        Serial.println(repeticoesRaw);
     } else {
 
         /*
@@ -234,6 +281,52 @@ void sendIRCode(storedIRDataStruct *aIRDataToSend) {
         Serial.print(F("Sent: "));
         printIRResultShort(&Serial, &aIRDataToSend->receivedIRData, false);
     }
+}
+
+/*
+ * Auto-teste: envia o codigo gravado e tenta captura-lo de volta com o proprio
+ * receptor da placa. Aponte o LED IR para o receptor (uns 5cm, sem encostar) e
+ * digite 't' seguido da posicao.
+ *
+ * Se o eco sair parecido com a gravacao original, o firmware esta emitindo o
+ * waveform certo e o problema com o aparelho e alcance ou frequencia da
+ * portadora. Se nao vier eco nenhum, o problema esta na emissao.
+ *
+ * No ESP32 o envio usa o LEDC e a recepcao usa um timer separado, entao da
+ * pra manter o receptor ligado durante o envio — o que nao vale em outras
+ * plataformas, onde os dois disputam o mesmo timer.
+ */
+void autoTesteIR(int index) {
+    if (index < 0 || index > 9) {
+        Serial.println(F("Posicao invalida para o auto-teste."));
+        return;
+    }
+
+    Serial.print(F("Auto-teste da posicao #"));
+    Serial.println(index);
+
+    uint8_t repeticoesAnteriores = repeticoesRaw;
+    repeticoesRaw = 1; // um disparo so, para o eco sair limpo
+
+    IrReceiver.start();
+    sendIRCode(&sStoredIRData[index]);
+    repeticoesRaw = repeticoesAnteriores;
+
+    unsigned long inicio = millis();
+    while (millis() - inicio < 500) {
+        if (IrReceiver.available()) {
+            Serial.println(F("--- Eco capturado pelo proprio receptor ---"));
+            IrReceiver.read();
+            IrReceiver.printIRResultRawFormatted(&Serial, true);
+            IrReceiver.resume();
+            IrReceiver.stop();
+            return;
+        }
+    }
+
+    IrReceiver.stop();
+    Serial.println(F("Nenhum eco capturado — o receptor nao viu o proprio LED."));
+    Serial.println(F("Aponte o LED IR direto para o receptor e repita o teste."));
 }
 
 void storeRFCode(int index) {

@@ -30,8 +30,30 @@ ota:
     password: !secret ota_password
 
 wifi:
-  ssid: !secret wifi_ssid
-  password: !secret wifi_password
+  # A rede tem dois APs anunciando o mesmo SSID: o roteador (192.168.100.1) e
+  # um repetidor ZTE Z1320 (192.168.100.5). Os BSSIDs ficam no secrets.yaml —
+  # não por serem credencial, mas porque MAC de ponto de acesso é
+  # geolocalizável em bases públicas, e este repositório é público.
+  #
+  # Medido, e nesta ordem:
+  #  - sem travar        -> conectava, depois sumia da rede e não voltava
+  #  - travado no REPETIDOR -> nunca conectou; 'Authentication Failed' sempre
+  #  - travado no ROTEADOR  -> conecta e fica; 16/18 amostras em 3 min
+  #
+  # Ou seja, o repetidor sempre recusou a placa, e quem aceitava era o roteador.
+  # Isso também derruba a hipótese inicial de que o problema era roaming entre
+  # os dois: travado num único AP as falhas de autenticação continuam.
+  #
+  # Trava no ROTEADOR. Se mudar o lugar do protótipo, reavaliar o sinal — mas
+  # não troque para o repetidor sem medir, porque lá não funcionou.
+  #
+  # Fica no secrets.yaml não por ser credencial, mas porque BSSID é
+  # geolocalizável: bases públicas mapeiam MAC de AP para coordenadas, então
+  # publicá-lo aqui equivaleria a publicar o endereço de casa.
+  networks:
+    - ssid: !secret wifi_ssid
+      password: !secret wifi_password
+      bssid: !secret wifi_bssid
 
   # NOTA: `fast_connect: true` foi testado aqui e PIOROU — trocou as falhas de
   # associação por 'Probe Request Unsuccessful'/'network can not be found'.

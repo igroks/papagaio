@@ -30,35 +30,26 @@ ota:
     password: !secret ota_password
 
 wifi:
-  # A rede tem dois APs anunciando o mesmo SSID: o roteador (192.168.100.1) e
-  # um repetidor ZTE Z1320 (192.168.100.5). Os BSSIDs ficam no secrets.yaml —
-  # não por serem credencial, mas porque MAC de ponto de acesso é
-  # geolocalizável em bases públicas, e este repositório é público.
+  # Rede dedicada a IoT, em WPA2-PSK puro.
   #
-  # Medido, e nesta ordem:
-  #  - sem travar        -> conectava, depois sumia da rede e não voltava
-  #  - travado no REPETIDOR -> nunca conectou; 'Authentication Failed' sempre
-  #  - travado no ROTEADOR  -> conecta e fica; 16/18 amostras em 3 min
+  # Ela existe por causa da rede anterior, que era mesh em WPA2/WPA3 misto. Lá
+  # a placa alternava entre 'Authentication Failed', 'Auth Expired' e
+  # 'Association Leave'; o nó repetidor recusava a associação sempre; e mesmo
+  # travando o BSSID no roteador só se chegava a ~90% de disponibilidade, com
+  # apagões de minutos e reinício espontâneo da placa.
   #
-  # Ou seja, o repetidor sempre recusou a placa, e quem aceitava era o roteador.
-  # Isso também derruba a hipótese inicial de que o problema era roaming entre
-  # os dois: travado num único AP as falhas de autenticação continuam.
+  # O modo de transição WPA2/WPA3 anuncia PMF, e o ESP32 com framework Arduino
+  # tropeça nessa negociação. Foi a única hipótese que explicava a
+  # erraticidade — às vezes conectava de primeira, às vezes nunca.
   #
-  # Trava no ROTEADOR. Se mudar o lugar do protótipo, reavaliar o sinal — mas
-  # não troque para o repetidor sem medir, porque lá não funcionou.
-  #
-  # Fica no secrets.yaml não por ser credencial, mas porque BSSID é
-  # geolocalizável: bases públicas mapeiam MAC de AP para coordenadas, então
-  # publicá-lo aqui equivaleria a publicar o endereço de casa.
-  networks:
-    - ssid: !secret wifi_ssid
-      password: !secret wifi_password
-      bssid: !secret wifi_bssid
-
-  # NOTA: `fast_connect: true` foi testado aqui e PIOROU — trocou as falhas de
-  # associação por 'Probe Request Unsuccessful'/'network can not be found'.
-  # Ele pula o scan, o que serve para rede oculta e atrapalha numa mesh com
-  # dois APs no mesmo SSID. Não reintroduzir sem medir.
+  # Hipóteses descartadas por medição, para ninguém tentar de novo:
+  #  - roaming entre APs — travar num único BSSID não resolveu
+  #  - alimentação — trocar de porta USB, inclusive para um dock
+  #    auto-alimentado, não mudou nada: 18/20 antes e depois
+  #  - `fast_connect: true` — piorou, trocou as falhas por 'Probe Request
+  #    Unsuccessful'/'network can not be found'
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
 
   # O modo de economia do WiFi (padrão `light` no ESP32) desliga o rádio entre
   # beacons, e é a causa clássica de a placa sumir da rede depois de um tempo.

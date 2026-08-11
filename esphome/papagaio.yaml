@@ -101,13 +101,22 @@ remote_receiver:
         pullup: true
     dump: all
 
-  - id: rx_rf
-    pin: GPIO23
-    dump: rc_switch
-    # 433MHz capta muito lixo; estes filtros descartam a maior parte dele.
-    tolerance: 50%
-    filter: 4us
-    idle: 4ms
+  # DESLIGADO — o receptor RF fica a centímetros do transmissor, e ao disparar
+  # o portão ele recebia a própria emissão em força total. O resultado era a
+  # placa TRAVAR de vez: sem rede, sem serial, sem responder a reset, só
+  # voltando por regravação. Reprodutível, e só no barramento RF — o de IR
+  # nunca causou isso.
+  #
+  # Ele é dispensável: o código do portão foi capturado com o firmware.ino, e
+  # desligá-lo ainda libera canais RMT. Se um dia for preciso reaprender algo
+  # em 433MHz, use o sketch Arduino em vez de reativar isto aqui.
+  #
+  # - id: rx_rf
+  #   pin: GPIO23
+  #   dump: rc_switch
+  #   tolerance: 50%
+  #   filter: 4us
+  #   idle: 4ms
 
 # --- Ar-condicionado ---------------------------------------------------------
 # Entidade de clima de verdade: temperatura, modo e ventilação, e não um
@@ -161,16 +170,26 @@ button:
       - remote_transmitter.transmit_rc_switch_raw:
           transmitter_id: tx_rf
           code: !secret portao_code
-          # Protocolo 6 da rc-switch (HT6P20B), mas com o pulso medido no
-          # controle real em vez do nominal de 450us: o oscilador do HT6P20B é
-          # ajustado por resistor externo, então cada unidade tem o seu valor,
-          # e este controle transmite consistentemente a ~506us. As proporções
-          # e o `inverted` vêm da tabela da rc-switch (RCSwitch.cpp:87).
-          # Se não funcionar, o teste seguinte é trocar tudo isso por
-          # `protocol: 6` e deixar o ESPHome usar o nominal.
+          # Reproduz exatamente o que o sketch Arduino faz em sendRFCode(), que
+          # é a única transmissão comprovadamente aceita por este portão:
+          #
+          #   rfSwitch.setProtocol(6)          -> HT6P20B
+          #   rfSwitch.setPulseLength(506)     -> o MEDIDO, sobrepondo o nominal 450
+          #   rfSwitch.send(...)               -> 10 repetições (padrão da rc-switch)
+          #
+          # As proporções abaixo são as do protocolo 6, conferidas contra as
+          # duas fontes: RCSwitch.cpp:87 e rc_switch_protocol.cpp:15 do ESPHome
+          # são idênticas. O que difere é só o pulso (506 medido, 450 nominal)
+          # e o número de repetições — o ESPHome manda uma vez se não pedirem.
+          #
+          # Receptor de portão exige vários quadros idênticos seguidos para
+          # rejeitar ruído, então uma transmissão única tende a ser descartada.
           protocol:
             pulse_length: 506
             sync: [23, 1]
             zero: [1, 2]
             one: [2, 1]
             inverted: true
+          repeat:
+            times: 10
+            wait_time: 0s
